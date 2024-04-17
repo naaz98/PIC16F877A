@@ -1,0 +1,98 @@
+#include<pic.h>
+
+// Define a delay macro
+#define delay for(i=0;i<=1000;i++)
+
+// Define LCD control pins
+#define rs RC0
+#define rw RC1
+#define e RC2
+
+// Configuration settings
+__CONFIG( FOSC_HS & WDTE_OFF & PWRTE_OFF & CP_OFF & BOREN_ON & LVP_OFF & CPD_OFF & WRT_OFF & DEBUG_OFF);
+
+// Function prototypes
+void adc();
+void lcd_int();
+void cmd(unsigned char a);
+void dat(unsigned char b);
+void show(unsigned char *s);
+
+int i;
+
+void main()
+{
+    // Set Port B and Port C as Output (for LCD) and RA0 as Input (for ADC)
+    TRISB=TRISC=0;          
+    TRISA0=1;               
+    
+    // Initialize LCD
+    lcd_int();
+    show("ADC Value :");
+    
+    while(1) {
+        // Display ADC value on LCD
+        cmd(0x8C);
+        adc();
+    }
+}
+
+// Initialize LCD
+void lcd_int()
+{
+    cmd(0x38);  // 2 lines, 5x7 matrix
+    cmd(0x0c);  // Display on, cursor off
+    cmd(0x06);  // Increment cursor
+    cmd(0x80);  // Set cursor position to first line, first character
+}
+
+// Send command to LCD
+void cmd(unsigned char a)
+{
+    PORTB=a;
+    rs=0;
+    rw=0;
+    e=1;
+    delay;
+    e=0;
+}
+
+// Send data to LCD
+void dat(unsigned char b)
+{
+    PORTB=b;
+    rs=1;
+    rw=0;
+    e=1;
+    delay;
+    e=0;
+}
+
+// Display a string on LCD
+void show(unsigned char *s)
+{
+    while(*s) {
+        dat(*s++);
+    }
+}
+
+// Read ADC value and display on LCD
+void adc()
+{
+    unsigned int adcval;
+    
+    // Configure ADC
+    ADCON1=0xc0;  // Right justified
+    ADCON0=0x85;  // ADC on, Fosc/64
+    while(GO_nDONE);  // Wait until conversion is finished
+    
+    // Read ADC result
+    adcval=((ADRESH<<8)|(ADRESL));
+    adcval=(adcval/3)-1;
+    
+    // Display ADC value on LCD
+    dat((adcval/1000)+48);
+    dat(((adcval/100)%10)+48);
+    dat(((adcval/10)%10)+48);
+    dat((adcval%10)+48);    
+}
