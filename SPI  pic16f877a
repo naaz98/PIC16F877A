@@ -1,0 +1,132 @@
+#include <xc.h>
+#include <stdint.h>
+
+// Configuration bits
+#pragma config FOSC = XT        // Oscillator Selection bits (XT oscillator)
+#pragma config WDTE = OFF       // Watchdog Timer Enable bit (WDT disabled)
+#pragma config PWRTE = OFF      // Power-up Timer Enable bit (PWRT disabled)
+#pragma config BOREN = ON       // Brown-out Reset Enable bit (BOR enabled)
+#pragma config LVP = OFF        // Low-Voltage (Single-Supply) In-Circuit Serial Programming Enable bit (RB3 is digital I/O, HV on MCLR must be used for programming)
+#pragma config CPD = OFF        // Data EEPROM Memory Code Protection bit (Data EEPROM code protection off)
+#pragma config WRT = OFF        // Flash Program Memory Write Enable bits (Write protection off)
+#pragma config CP = OFF         // Flash Program Memory Code Protection bit (Code protection off)
+
+#define _XTAL_FREQ 4000000  // Define crystal frequency, 4MHz for XT
+
+#define CS LATC2
+#define DC LATC1
+#define RST LATC0
+
+const uint8_t font[96][5] = {
+    // Basic ASCII font 5x7, offset by 32 (' ' is first character)
+    // Define only a small set of characters for simplicity
+    {0x00, 0x00, 0x00, 0x00, 0x00}, // Space ' '
+    {0x00, 0x00, 0x5F, 0x00, 0x00}, // '!'
+    // ... (define other characters as needed)
+    {0x7C, 0x12, 0x12, 0x12, 0x7C}, // 'H'
+    {0x7C, 0x0A, 0x12, 0x12, 0x12}, // 'E'
+    {0x7C, 0x02, 0x02, 0x02, 0x7C}, // 'L'
+    {0x7C, 0x02, 0x02, 0x02, 0x7C}, // 'L'
+    {0x38, 0x44, 0x44, 0x44, 0x38}, // 'O'
+    {0x00, 0x00, 0x00, 0x00, 0x00}, // ' '
+    {0x7C, 0x12, 0x12, 0x12, 0x7C}, // 'W'
+    {0x7C, 0x0A, 0x12, 0x12, 0x12}, // 'O'
+    {0x7C, 0x02, 0x02, 0x02, 0x7C}, // 'R'
+    {0x7C, 0x10, 0x10, 0x10, 0x7C}, // 'L'
+    {0x7C, 0x0A, 0x12, 0x12, 0x12}  // 'D'
+};
+
+void SPI_Init() {
+    // Set SDO as output, SDI as input, SCK as output
+    TRISC5 = 0;  // SDO
+    TRISC4 = 1;  // SDI
+    TRISC3 = 0;  // SCK
+    TRISC2 = 0;  // CS
+    TRISC1 = 0;  // DC
+    TRISC0 = 0;  // RST
+    
+    // Initialize SPI in Master mode, clock = Fosc/16
+    SSPSTAT = 0x40;  // Sampling at middle
+    SSPCON = 0x20;   // SPI Master mode, clock = Fosc/4
+}
+
+void SPI_Write(unsigned char data) {
+    SSPBUF = data;        // Load data into buffer
+    while (!SSPSTATbits.BF);  // Wait for transmission to complete
+}
+
+void LCD_Command(unsigned char cmd) {
+    CS = 0;       // Select the LCD
+    DC = 0;       // Command mode
+    SPI_Write(cmd);  // Send command
+    CS = 1;       // Deselect the LCD
+}
+
+void LCD_Data(unsigned char data) {
+    CS = 0;       // Select the LCD
+    DC = 1;       // Data mode
+    SPI_Write(data);  // Send data
+    CS = 1;       // Deselect the LCD
+}
+
+void LCD_Init() {
+    RST = 0;  // Reset the LCD
+    __delay_ms(10);
+    RST = 1;  // Release the reset
+    __delay_ms(120);
+
+    LCD_Command(0x01);  // Software reset
+    __delay_ms(150);
+
+    // Initialization sequence from datasheet or LCD example code
+    // Example initialization sequence for ST7735 controller
+    LCD_Command(0x11); // Sleep out
+    __delay_ms(120);
+    LCD_Command(0x29); // Display on
+}
+
+void LCD_SetCursor(uint8_t x, uint8_t y) {
+    LCD_Command(0x2A);  // Column address set
+    LCD_Data(0x00);
+    LCD_Data(x);        // Start column
+    LCD_Data(0x00);
+    LCD_Data(0x7F);     // End column (128 pixels)
+
+    LCD_Command(0x2B);  // Row address set
+    LCD_Data(0x00);
+    LCD_Data(y);        // Start row
+    LCD_Data(0x00);
+    LCD_Data(0x9F);     // End row (160 pixels)
+
+    LCD_Command(0x2C);  // Memory write
+}
+
+void LCD_DrawChar(uint8_t x, uint8_t y, char c) {
+    if (c < 32 || c > 127) {
+        c = ' ';  // Replace unsupported characters with space
+    }
+    c -= 32;  // Adjust character index for the font array
+    LCD_SetCursor(x, y);
+    for (int i = 0; i < 5; i++) {
+        LCD_Data(font[c][i]);
+    }
+    LCD_Data(0x00);  // Add space between characters
+}
+
+void LCD_DrawString(uint8_t x, uint8_t y, char* str) {
+    while (*str) {
+        LCD_DrawChar(x, y, *str++);
+        x += 6;  // Move to the next character position
+    }
+}
+
+void main() {
+    SPI_Init();         // Initialize SPI
+    LCD_Init();         // Initialize LCD
+    
+    LCD_DrawString(0, 0, "Hello, World!");  // Print "Hello, World!" at the top-left corner
+
+    while(1) {
+        // Main loop
+    }
+}
